@@ -11,20 +11,15 @@
 
 ## Предлагаемое решение
 
-Добавить клиентское HTTP кэширование во все фронтэнды - Shop UI, CRM UI, MES UI. 
-Рекомендуется использовать HTTP заголовок для проверки актуальности данных:
-
-```
-Cache-Control: no-cache
-```
+Добавить клиентское HTTP кэширование статической информации (картинки, стили, js, шрифты) во все фронтэнды - Shop UI, CRM UI, MES UI.
 
 Добавить серверное кэширование в MES.
 
-Предлагаю использовать смешанную стратегию - Read Through и Write Behind. 
+Предлагаю использовать смешанную стратегию - Read Through и Write Through. 
 Это позволит ускорить операции чтения, не усложнив при этом приложение.
-Паттерн записи Write Behind позволит быстро обновить данные, не дожидаясь обновления базы - и данные сразу будут видны другим операторам.
+Паттерн записи Write Through позволит обновлять данные через кэш, что гарантирует консистентность данных в кэше. 
+Инвалидация в таком случае будет не нужна.
 
-Инвалидацию данных предлагаю сделать по ключу - это позволит минимизировать объём инвалидации и обновлять только необходимые данные, улучшая производительность и уменьшая нагрузку на систему.
 
 ### Диаграмма взаимодействия для MES:
 
@@ -37,6 +32,7 @@ actor "API Client" as client
 participant "MES API" as api
 participant Cache as cache
 participant "MES DB" as db
+participant "Message Queue" as queue
 
 == Read request: Cache Hit ==
 client -> api: Get Orders
@@ -53,14 +49,22 @@ db --> cache: Orders
 cache --> api: Orders
 api --> client: Orders
 
-== Write request ==
+== Write request (client update) ==
 
 client -> api: Update Order
 api -> cache: Update Order in Cache
+cache -> db: Update Order in DB (sync)
+db --> cache: ok
 cache --> api: ok
 api --> client: ok
-cache -> db: Update Order in DB (async)
 
+== Write request (update from queue) ==
+
+queue -> api: Update Order
+api -> cache: Update Order in Cache
+cache -> db: Update Order in DB (sync)
+db --> cache: ok
+cache --> api: ok
 
 @enduml
 ```
